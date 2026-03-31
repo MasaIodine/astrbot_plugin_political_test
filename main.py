@@ -5,6 +5,7 @@ from datetime import datetime
 import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
+from astrbot.api import logger
 
 # HTML 模板：用于生成最后的结果图
 # 包含了 CSS 样式（左侧进度条，右侧意识形态描述和代表人物）
@@ -357,8 +358,58 @@ class PoliticalValuePlugin(Star):
             image_url = await self.html_render(HTML_TMPL, render_data, options=options)
             yield event.image_result(image_url)
             
-            # 销毁会话
-            del self.user_sessions[user_id]
+            try:
+                # 获取对话 ID
+                umo = event.unified_msg_origin
+
+                # 获取当前模型 ID
+                provider_id = await self.context.get_current_chat_provider_id(umo=umo)
+
+                # 获取人设
+                persona_mgr = self.context.persona_manager
+                persona_obj = await persona_mgr.get_default_persona_v3(umo=umo)
+
+                # 提取系统提示词
+                sys_prompt = ""
+                if isinstance(persona_obj, dict):
+                    sys_prompt = persona_obj.get("prompt", "")
+                else:
+                    sys_prompt = getattr(persona_obj, "prompt", getattr(persona_obj, "system_prompt", ""))
+
+                # 构造提示词
+                llm_prompt = f"""
+                    用户刚刚完成了一次 8values 政治倾向测试。
+                    匹配意识形态：{best_match['name']}
+                    各维度得分：
+                    - 经济：{normalized['econ']:.1f}% 平等
+                    - 外交：{100-normalized['dipl']:.1f}% 民族
+                    - 政治：{normalized['govt']:.1f}% 自由
+                    - 社会：{normalized['scty']:.1f}% 进步
+                
+                    请结合你的人设，对该结果进行一段简短的点评。直接输出评价，不要有废话。
+                """
+
+                # 调用大模型
+                llm_resp = await self.context.llm_generate(
+                    chat_provider_id=provider_id, 
+                    system_prompt=sys_prompt,
+                    prompt=llm_prompt
+                )
+
+                # 输出 LLM 响应
+                if llm_resp and llm_resp.completion_text:
+                    yield event.plain_result(f"🤖 AI 评价：")
+                    yield event.plain_result(f"{llm_resp.completion_text}")
+                    
+            except Exception as e:
+                # 使用 logger 记录错误，以防止 LLM 服务短期不可用引发的排查困难
+                yield event.plain_result(f"响应失败，请在控制台查看详情")
+                logger.error(f"AI Evaluation Error: {e}")
+
+            # 流程结束，清理用户数据
+            if user_id in self.user_sessions:
+                del self.user_sessions[user_id]
+            
         
     @filter.command("valuestop")
     async def valuestop(self, event: AstrMessageEvent):
@@ -376,6 +427,7 @@ class PoliticalValuePlugin(Star):
         """使用欧几里得距离算法。在四维空间（econ, dipl, govt, scty）中，找到与用户得分距离最短的已知意识形态。"""
         min_distance = float('inf')
         closest_obj = None
+
         for ideology in self.ideologies:
             dist_sq = 0
             for key in ['econ', 'dipl', 'govt', 'scty']:
