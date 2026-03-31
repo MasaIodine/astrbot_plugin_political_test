@@ -233,7 +233,7 @@ class PoliticalValuePlugin(Star):
                 }
                 ]
 
-                # 合并到render_data，使用get方法防止返回空值
+                # 合并到 render_data，使用 get 方法防止返回空值
                 render_data = {
                 "ideology_name": best_match["name"],
                 "description": best_match.get("desc", "暂无意识形态简述"),
