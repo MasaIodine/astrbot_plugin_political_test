@@ -2,7 +2,6 @@ import json
 import os
 import time
 import html
-import logging
 from datetime import datetime
 import asyncio
 from astrbot.api.event import filter, AstrMessageEvent
