@@ -80,7 +80,7 @@ HTML_TMPL = """
 class PoliticalValuePlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.questions = self._load_json("data", "test.json")
+        self.questions = self._load_json("data", "question.json")
         self.ideologies = self._load_json("data", "idea.json")
         
         self.max_scores = {"econ": 0, "dipl": 0, "govt": 0, "scty": 0}
